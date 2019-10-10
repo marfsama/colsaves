@@ -1,2 +1,4 @@
 requests
 requests-html
+pytest
+pytest-cov
