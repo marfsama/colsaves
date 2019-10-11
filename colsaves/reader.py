@@ -160,11 +160,18 @@ class Bytes:
     def read(self, context):
         return context.file.read(self.length)
 
+class Short:
+    def read(self, context):
+        return tools.read16(context.file)
 
 class Word:
     def read(self, context):
         return tools.readu16(context.file)
 
+
+class Int:
+    def read(self, context):
+        return tools.read32(context.file)
 
 class Lookup:
     def __init__(self, array, reader, default=None):
@@ -376,8 +383,27 @@ class Unit(Bean):
 class Savegame:
     def __serialize__(self):
         return tools.object_attributes_to_ordered_dict(self, [
-            "magic", "padding1", "num_units", "num_colonies", "padding2", "pos_player", "players", "padding3", "pos_colonies", "colonies", "units",
-            "pos", "padding4", "gold", "padding5"])
+            "magic", "padding1", "num_units", "num_colonies", "padding2", "royal_force", "padding3", "pos_player", 
+            #"players", 
+            "padding4", "pos_colonies", 
+            # "colonies", "units",
+            "pos",
+            # europe?
+            "padding5", 
+            "tax_rate", 
+            "next_recruits", 
+            "padding6",
+            "current_bells", 
+            "padding7", 
+            "gold", 
+            "padding8", 
+            "goods_price", 
+            "goods_unknown", 
+            "goods_balance", 
+            "goods_demand", 
+            "padding9", 
+            "padding10", 
+            ])
 
     def __str__(self):
         return json.dumps(self, indent=3, cls=tools.Encoder)
@@ -388,17 +414,30 @@ format = Bean(Savegame,
     padding1 = Bytes(36), 
     num_units = Word(), 
     num_colonies = Word(), 
-    padding2 = Bytes(110), 
+    padding2 = Bytes(58), 
+    royal_force = Loop(lambda _: 4, Word()), 
+    padding3 = Bytes(44), 
     pos_player = Tell(), 
     players = Loop(lambda _: 4, Player()), 
-    padding3 = Bytes(24), 
+    padding4 = Bytes(24), 
     pos_colonies = Tell(), 
     colonies = Loop(lambda context: context.objects[-1].num_colonies, Colony()), 
     units = Loop(lambda context: context.objects[-1].num_units, Unit()), 
     pos = Tell(), 
-    padding4 = Bytes(42), 
+    padding5 = Bytes(1), 
+    tax_rate = Byte(), 
+    next_recruits = Loop(lambda _: 3, Lookup(OCCUPATIONS, Byte()),), 
+    padding6 = Bytes(7), 
+    current_bells = Word(), 
+    padding7 = Bytes(28), 
     gold = Word(), 
-    padding5 = Bytes(200), 
+    padding8 = Bytes(32), 
+    goods_price = Loop(lambda _: len(GOODS), Byte()), 
+    goods_unknown = Loop(lambda _: len(GOODS), Short()), 
+    goods_balance = Loop(lambda _: len(GOODS), Int()), 
+    goods_demand = Loop(lambda _: len(GOODS), Int()), 
+    padding9 = Bytes(64), 
+    padding10 = Bytes(320), 
 )
 
 def read_savegame(filename):
