@@ -116,3 +116,6 @@ data/
 .eric6project/
 *.e4p
 .vscode
+
+
+foo.txt
