@@ -1,7 +1,27 @@
+import os
 import sys
 import json
 
 import tools
+
+ORDERS = [
+"no order", 
+"sentry", 
+"trade route", 
+"go to", 
+"0x04", 
+"0x05", 
+"fortify", 
+"0x07", 
+"plow", 
+"road"
+]
+
+CONTROL = [
+"player", 
+"ai", 
+"withdrawn from new world"
+]
 
 DIFFICULTY = [
 "Discoverer", 
@@ -40,7 +60,7 @@ OCCUPATIONS = [
     "Ind. Servant",    #0x19
     "Criminal",        #0x1A
     "Indian convert",  #0x1B
-    "Free colonis",    #0x1C
+    "Free colonist",   #0x1C
     "Armed brave",     #0x1D
     "Mounted brave",   #0x1E
     "unknown (0x1f)"   #0x1F
@@ -103,19 +123,23 @@ NATIONS = [
 
 UNITS = {
 0 : "Colonist", 
-1 : "Pioneer", 
-2 : "Soldier", 
-
+1 : "Soldier", 
+2 : "Pioneer", 
+3 : "Missionary", 
 4 : "Veteran dragoon",
 5 : "Scout",
-6 : "Regular (Continental Army)", 
-7 : "Cavalery (Republic Army)", 
-8 : "Cavalery (Continental Army)", 
+6 : "Regular (Tory Army)", 
+7 : "Cavalery (Continental Army)", 
+8 : "Cavalery (Tory Army)", 
+9 : "Regular (Continental Army)", 
+10: "Treasure", 
 11: "Artillery", 
 12: "Wagon Train",
 13: "Caravel", 
 14: "Merchantman", 
 15: "Galleon", 
+16: "Privateer", 
+17: "Frigate", 
 18: "Man-O-War (Continental Army)", 
 19: "Brave",
 20: "Armed Brave", 
@@ -188,6 +212,14 @@ class Bits:
     def read(self, context):
         bytes = context.file.read(self.num_bytes)
         return list(tools.stream_bits(bytes, self.num_bits))
+
+
+class Skip:
+    def __init__(self, bytes):
+        self.bytes = bytes
+
+    def read(self, context):
+        return context.file.seek(bytes, os.SEEK_CUR)
 
 class Byte:
     def read(self, context):
@@ -275,6 +307,16 @@ class Bean:
 
         return bean
 
+class Position(Bean):
+    def __init__(self):
+        super().__init__(Position, 
+            x = Byte(), 
+            y = Byte())
+
+    def __serialize__(self):
+        return tools.object_attributes_to_ordered_dict(self, ["x", "y"])
+    
+
 
 class ColonistType(Byte):
     def read(self, context):
@@ -287,11 +329,12 @@ class Player(Bean):
         super().__init__(Player, 
             name = String(24), 
             continent = String(24), 
-            word1 = Word(),  # "&00" to control the power, or "&01" to let AI control it. "&02" appears related to whether the power has withdrawn, and the byte before this one appears related to diplomacy, but I'm not sure yet.
-            word2 = Word())
+            byte1 = Byte(),  
+            control = Lookup(CONTROL,  Byte()), 
+            diplomacy = Word())
 
     def __serialize__(self):
-        return tools.object_attributes_to_ordered_dict(self, ["name", "continent", "word1", "word2"])
+        return tools.object_attributes_to_ordered_dict(self, ["name", "continent", "byte1", "control", "diplomacy"])
 
 class Colonist():
     def __serialize__(self):
@@ -309,10 +352,8 @@ class Colony(Bean):
             nation = Lookup(NATIONS, Byte()),
             dummy1 = Bytes(4),
             colonists_num = Byte(),
-            colonists_occupation = Loop(lambda context: context.objects[-1].colonists_num, ColonistType()),
-            colonists_unused_occupation = Loop(lambda context: 32-context.objects[-1].colonists_num, Byte()),
-            colonists_specialization = Loop(lambda context: context.objects[-1].colonists_num, ColonistType()),
-            colonists_unused_specialization = Loop(lambda context: 32-context.objects[-1].colonists_num, Byte()),
+            colonists_occupation = Loop(lambda _: 32, ColonistType()),
+            colonists_specialization = Loop(lambda _: 32, ColonistType()),
             colonists_time = Bytes(16),
             tile_usage = Bytes(8),
             dummy2 = Bytes(12),
@@ -324,8 +365,8 @@ class Colony(Bean):
             dummy4 = Bytes(5),
             storage = Loop(lambda _: len(GOODS), Word()),
             dummy5 = Bytes(8),
-            bells = Word(),
-            data = Bytes(6),
+            bells = Int(),
+            data = Int(),
             )
 
     def merge_colonist_data(self):
@@ -344,9 +385,7 @@ class Colony(Bean):
                 self.colonists[colonist].tile = DIRECTIONS[direction_index]
 
         del self.colonists_occupation
-        del self.colonists_unused_occupation
         del self.colonists_specialization
-        del self.colonists_unused_specialization
         del self.colonists_time
         del self.tile_usage
         
@@ -387,17 +426,21 @@ class Colony(Bean):
 class Unit(Bean):
     def __init__(self):
         super().__init__(Unit, 
-            x = Byte(), 
-            y = Byte(), 
+            pos = Position(), 
             type = Lookup(UNITS, Byte()),
             nation_index = Byte(),
             dummy1 = Byte(),
             used_moves = Byte(),
-            dummy2 = Bytes(6),
+            dummy2 = Bytes(2),  # order { PLOW = 8, ROAD = 9 }
+            order = Lookup(ORDERS, Byte()), 
+            goto_pos = Position(), 
+            dummy3 = Bytes(1),
             num_cargo = Byte(), 
             cargo_types = LookupList(GOODS, Bits(3, 4)),
-            cargo_amount = Bytes(6), 
-            data = Bytes(6)
+            cargo_amount = Bytes(6),  # last cargo pos used for num of tools for pioneer
+            dummy4 = Bytes(1), 
+            profession = Lookup(OCCUPATIONS, Byte()),
+            data = Bytes(4)
             )
 
     def after_read(self, context):
@@ -413,12 +456,18 @@ class Unit(Bean):
         self.nation = NATIONS[self.nation_index & 15]
         self.dummy0 = self.nation_index >> 4
         
-        del self.num_cargo
-        del self.cargo_types
-        del self.cargo_amount
+#        del self.num_cargo
+#        del self.cargo_types
+#        del self.cargo_amount
 
     def __serialize__(self):
-        return tools.object_attributes_to_ordered_dict(self, ["id", "x", "y", "type", "nation", "dummy0", "dummy1", "used_moves", "dummy2", "cargo", "data"])
+        return tools.object_attributes_to_ordered_dict(self, ["id", "pos", "type", "nation", "dummy0", "dummy1", "used_moves", "dummy2", "order", "goto_pos", "dummy3", "cargo", 
+        "num_cargo", 
+        "cargo_types", 
+        "cargo_amount", 
+        "dummy4", 
+        "profession", 
+        "data"])
 
 class Europe(Bean):
     def __init__(self):
@@ -444,7 +493,7 @@ class Europe(Bean):
             goods_unknown = Loop(lambda _: len(GOODS), Short()), 
             goods_balance = Loop(lambda _: len(GOODS), Int()), 
             goods_demand = Loop(lambda _: len(GOODS), Int()), 
-            padding9 = Bytes(64), 
+            goods_demand2 = Loop(lambda _: len(GOODS), Int()), 
             )
             
     def reverse_sublist(self, lst,start,end):
@@ -485,7 +534,7 @@ class Europe(Bean):
             "goods_unknown", 
             "goods_balance", 
             "goods_demand", 
-            "padding9", 
+            "goods_demand2", 
             ])
 
 
@@ -496,20 +545,27 @@ class Savegame:
             "map_width", 
             "map_height", 
             "padding2", 
+            "year", 
+            "autumn", 
             "turn", 
             "padding3", 
-            "num_units", "num_colonies", 
+            "active_unit", 
             "padding4", 
-            "difficulty", 
+            "num_tribes", 
+            "num_units",
+            "num_colonies", 
             "padding5", 
-            "royal_force", 
+            "difficulty", 
             "padding6", 
+            "royal_force", 
+            "padding7", 
 #            "players", 
-            "padding7",
-#             "colonies", "units",
-#            "europe", 
+            "padding8",
+#            "colonies", 
+#            "units",
+            "europe", 
             "pos",
-            "padding8", 
+            "padding9", 
             ])
 
     def __str__(self):
@@ -521,23 +577,28 @@ format = Bean(Savegame,
     padding1 = Bytes(4), 
     map_width = Word(), 
     map_height = Word(), 
-    padding2 = Bytes(14), 
+    padding2 = Bytes(10), 
+    year = Word(), 
+    autumn = Word(), 
     turn = Word(), 
-    padding3 = Bytes(12), 
+    padding3 = Bytes(2), 
+    active_unit = Word(), 
+    padding4 = Bytes(6), 
+    num_tribes = Word(), 
     num_units = Word(), 
     num_colonies = Word(), 
-    padding4 = Bytes(6), 
+    padding5 = Bytes(6), 
     difficulty = Lookup(DIFFICULTY, Byte()), 
-    padding5 = Bytes(51), 
+    padding6 = Bytes(51), 
     royal_force = Loop(lambda _: 4, Word()), 
-    padding6 = Bytes(44), 
+    padding7 = Bytes(44), 
     players = Loop(lambda _: 4, Player()), 
-    padding7 = Bytes(24), 
+    padding8 = Bytes(24), 
     colonies = Loop(lambda context: context.objects[-1].num_colonies, Colony()), 
     units = Loop(lambda context: context.objects[-1].num_units, Unit()), 
     europe = Loop(lambda _: 4, Europe()), 
     pos = Tell(), 
-    padding8 = Bytes(320), 
+    padding9 = Bytes(320), 
 )
 
 def read_savegame(filename):

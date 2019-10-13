@@ -5,13 +5,6 @@ import json
 from collections import OrderedDict
 
 
-def readlist(function, file, count):
-    list = []
-    for i in range(count):
-        list.append(function(file))
-    return list
-
-
 def readu32(file):
     data = file.read(4)
     return struct.unpack("I", data)[0]
@@ -45,27 +38,6 @@ def readu8(file):
 def read8(file):
     data = file.read(1)
     return struct.unpack("b", data)[0]
-
-
-def printHex(name, number):
-    print(name, ":", number, "0x{0:x}".format(number))
-
-
-def printHexListOneLine(name, numbers):
-    s = ""
-    for number in numbers:
-        s += "{0} 0x{1:x}, ".format(number, number)
-    print(name, ":", s)
-
-
-def printHexListMultiLine(name, numbers):
-    for index in range(len(numbers)):
-        printHex(name+str(index+1), numbers[index])
-
-
-def toHex(list):
-    return ["0x{0:x}".format(s) for s in list]
-
 
 # size of byte chunks to read
 CHUNK_SIZE = 4096
@@ -123,7 +95,7 @@ def iterate_tree(node, get_childs_function):
         yield from iterate_tree(child, get_childs_function)
 
 
-def stream_bits(byte_stream, num_bits = 1):
+def stream_bits(byte_stream, num_bits=1):
     bits_still_needed = num_bits
     current_value = 0
     for b in byte_stream:
@@ -149,10 +121,11 @@ def stream_bits(byte_stream, num_bits = 1):
                 # reset current result and reset the number of needed bits
                 current_value = 0
                 bits_still_needed = num_bits
-            
+
     # do we have some partial bits processed? yield those
     if bits_still_needed < num_bits:
-        yield current_value 
+        yield current_value
+
 
 class Block:
 
