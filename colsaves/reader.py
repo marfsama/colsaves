@@ -538,6 +538,34 @@ class Europe(Bean):
             ])
 
 
+class Tribe(Bean):
+    def __init__(self):
+        super().__init__(Tribe, 
+            pos = Position(), 
+            nation = Lookup(NATIONS,  Byte()),
+            state = Byte(),
+            population = Byte(),
+            mission = Byte(),
+            padding1 = Bytes(4), 
+            panic = Byte(), 
+            padding2 = Bytes(6), 
+            population_loss_in_current_turn = Byte()
+            )
+
+    def __serialize__(self):
+        return tools.object_attributes_to_ordered_dict(self, [
+            "pos", 
+            "nation", 
+            "state", 
+            "population", 
+            "mission", 
+            "padding1", 
+            "panic", 
+            "padding2", 
+            "population_loss_in_current_turn", 
+            ])
+
+
 class Savegame:
     def __serialize__(self):
         return tools.object_attributes_to_ordered_dict(self, [
@@ -564,7 +592,8 @@ class Savegame:
 #            "colonies", 
 #            "units",
             "europe", 
-            "pos",
+            "tribe", 
+            "pos", 
             "padding9", 
             ])
 
@@ -597,6 +626,7 @@ format = Bean(Savegame,
     colonies = Loop(lambda context: context.objects[-1].num_colonies, Colony()), 
     units = Loop(lambda context: context.objects[-1].num_units, Unit()), 
     europe = Loop(lambda _: 4, Europe()), 
+    tribe = Loop(lambda context: context.objects[-1].num_tribes, Tribe()), 
     pos = Tell(), 
     padding9 = Bytes(320), 
 )
@@ -635,6 +665,7 @@ Rest bis EOF:  (22621 - 25759) => 3138
 COL03:
 
 Europe bis 0x205C (8284)
+Tribes bis 0x25D8 (9688)
 
 padding: 0x205C - 0x2B1F (8284 - 11039) => 2755
 0x2B1F - 0x3B6F (11039 - 15215)
